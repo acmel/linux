@@ -739,7 +739,7 @@ static size_t hist_entry__fprintf_callchain(struct hist_entry *self,
 }
 
 size_t hists__fprintf(struct hists *hists, struct hists *pair,
-		      bool show_displacement, FILE *fp)
+		      bool show_displacement, int max_lines, FILE *fp)
 {
 	struct sort_entry *se;
 	struct rb_node *nd;
@@ -749,6 +749,7 @@ size_t hists__fprintf(struct hists *hists, struct hists *pair,
 	unsigned int width;
 	const char *sep = symbol_conf.field_sep;
 	const char *col_width = symbol_conf.col_width_list_str;
+	int nlines = 0;
 
 	init_rem_hits();
 
@@ -814,7 +815,10 @@ size_t hists__fprintf(struct hists *hists, struct hists *pair,
 			width = hists__col_len(hists, se->se_width_idx);
 		fprintf(fp, "  %*s", width, se->se_header);
 	}
+
 	fprintf(fp, "\n");
+	if (max_lines && ++nlines >= max_lines)
+		goto out;
 
 	if (sep)
 		goto print_entries;
@@ -841,7 +845,13 @@ size_t hists__fprintf(struct hists *hists, struct hists *pair,
 			fprintf(fp, ".");
 	}
 
-	fprintf(fp, "\n#\n");
+	fprintf(fp, "\n");
+	if (max_lines && ++nlines >= max_lines)
+		goto out;
+
+	fprintf(fp, "#\n");
+	if (max_lines && ++nlines >= max_lines)
+		goto out;
 
 print_entries:
 	for (nd = rb_first(&hists->entries); nd; nd = rb_next(nd)) {
@@ -864,13 +874,16 @@ print_entries:
 		if (symbol_conf.use_callchain)
 			ret += hist_entry__fprintf_callchain(h, hists, fp,
 							     hists->stats.total_period);
+		if (max_lines && ++nlines >= max_lines)
+			goto out;
+
 		if (h->ms.map == NULL && verbose > 1) {
 			__map_groups__fprintf_maps(&h->thread->mg,
 						   MAP__FUNCTION, verbose, fp);
 			fprintf(fp, "%.10s end\n", graph_dotted_line);
 		}
 	}
-
+out:
 	free(rem_sq_bracket);
 
 	return ret;
