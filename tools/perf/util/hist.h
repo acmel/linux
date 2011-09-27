@@ -2,6 +2,7 @@
 #define __PERF_HIST_H
 
 #include <linux/types.h>
+#include <pthread.h>
 #include "callchain.h"
 
 extern struct callchain_param callchain_param;
@@ -43,8 +44,12 @@ enum hist_column {
 };
 
 struct hists {
+	struct rb_root		entries_in_array[2];
+	struct rb_root		*entries_in;
 	struct rb_root		entries;
+	struct rb_root		entries_collapsed;
 	u64			nr_entries;
+	pthread_mutex_t		lock;
 	struct events_stats	stats;
 	u64			event_stream;
 	u16			col_len[HISTC_NR_COLS];
@@ -52,14 +57,16 @@ struct hists {
 	struct callchain_cursor	callchain_cursor;
 };
 
+void hists__init(struct hists *hists);
+
 struct hist_entry *__hists__add_entry(struct hists *self,
 				      struct addr_location *al,
 				      struct symbol *parent, u64 period);
 extern int64_t hist_entry__cmp(struct hist_entry *, struct hist_entry *);
 extern int64_t hist_entry__collapse(struct hist_entry *, struct hist_entry *);
-int hist_entry__fprintf(struct hist_entry *self, struct hists *hists,
+int hist_entry__fprintf(struct hist_entry *hist, size_t size, struct hists *hists,
 			struct hists *pair_hists, bool show_displacement,
-			long displacement, FILE *fp, u64 total);
+			long displacement, FILE *fp, u64 session_total);
 int hist_entry__snprintf(struct hist_entry *self, char *bf, size_t size,
 			 struct hists *hists, struct hists *pair_hists,
 			 bool show_displacement, long displacement,
@@ -73,7 +80,8 @@ void hists__inc_nr_events(struct hists *self, u32 type);
 size_t hists__fprintf_nr_events(struct hists *self, FILE *fp);
 
 size_t hists__fprintf(struct hists *self, struct hists *pair,
-		      bool show_displacement, int max_lines, FILE *fp);
+		      bool show_displacement, bool show_header,
+		      int max_rows, int max_cols, FILE *fp);
 
 int hist_entry__inc_addr_samples(struct hist_entry *self, int evidx, u64 addr);
 int hist_entry__annotate(struct hist_entry *self, size_t privsize);

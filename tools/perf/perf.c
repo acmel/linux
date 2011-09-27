@@ -322,6 +322,7 @@ static void handle_internal_command(int argc, const char **argv)
 		{ "stat",	cmd_stat,	0 },
 		{ "timechart",	cmd_timechart,	0 },
 		{ "top",	cmd_top,	0 },
+		{ "htop",	cmd_htop,	0 },
 		{ "annotate",	cmd_annotate,	0 },
 		{ "version",	cmd_version,	0 },
 		{ "script",	cmd_script,	0 },

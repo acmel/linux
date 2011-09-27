@@ -369,6 +369,7 @@ BUILTIN_OBJS += $(OUTPUT)builtin-report.o
 BUILTIN_OBJS += $(OUTPUT)builtin-stat.o
 BUILTIN_OBJS += $(OUTPUT)builtin-timechart.o
 BUILTIN_OBJS += $(OUTPUT)builtin-top.o
+BUILTIN_OBJS += $(OUTPUT)builtin-htop.o
 BUILTIN_OBJS += $(OUTPUT)builtin-script.o
 BUILTIN_OBJS += $(OUTPUT)builtin-probe.o
 BUILTIN_OBJS += $(OUTPUT)builtin-kmem.o
