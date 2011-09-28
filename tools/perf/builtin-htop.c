@@ -39,6 +39,8 @@
 
 static int			default_interval;
 static int			freq = 1000; /* 1 KHz */
+static bool			hide_kernel_symbols;
+static bool			hide_user_symbols;
 static bool			inherit = false;
 static bool			group = false;
 static unsigned int		mmap_pages = 128;
@@ -120,6 +122,20 @@ static int perf_event__process_sample(union perf_event *event,
 				      struct perf_session *session)
 {
 	struct addr_location al;
+	const u8 origin = event->header.misc & PERF_RECORD_MISC_CPUMODE_MASK;
+
+	switch (origin) {
+	case PERF_RECORD_MISC_USER:
+		if (hide_user_symbols)
+			return 0;
+		break;
+	case PERF_RECORD_MISC_KERNEL:
+		if (hide_kernel_symbols)
+			return 0;
+		break;
+	default:
+		return 0;
+	}
 
 	if (perf_event__preprocess_sample(event, session, &al,
 					  sample, symbol_filter) < 0) {
@@ -356,9 +372,13 @@ static const struct option options[] = {
 		    "put the counters into a counter group"),
 	OPT_BOOLEAN('i', "inherit", &inherit,
 		    "child tasks inherit counters"),
+	OPT_BOOLEAN('K', "hide_kernel_symbols", &hide_kernel_symbols,
+		    "hide kernel symbols"),
 	OPT_UINTEGER('m', "mmap-pages", &mmap_pages, "number of mmap data pages"),
 	OPT_STRING('s', "sort", &sort_order, "key[,key2...]",
 		   "sort by key(s): pid, comm, dso, symbol, parent"),
+	OPT_BOOLEAN('U', "hide_user_symbols", &hide_user_symbols,
+		    "hide user symbols"),
 	OPT_INCR('v', "verbose", &verbose,
 		 "be more verbose (show symbol address, etc)"),
 	OPT_END()
