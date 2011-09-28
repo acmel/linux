@@ -265,14 +265,9 @@ static bool hists__collapse_insert_entry(struct hists *hists,
 	return true;
 }
 
-void hists__collapse_resort(struct hists *hists)
+static struct rb_root *hists__get_rotate_entries_in(struct hists *hists)
 {
 	struct rb_root *root;
-	struct rb_node *next;
-	struct hist_entry *n;
-
-	if (!sort__need_collapse)
-		return;
 
 	pthread_mutex_lock(&hists->lock);
 
@@ -282,6 +277,19 @@ void hists__collapse_resort(struct hists *hists)
 
 	pthread_mutex_unlock(&hists->lock);
 
+	return root;
+}
+
+void hists__collapse_resort(struct hists *hists)
+{
+	struct rb_root *root;
+	struct rb_node *next;
+	struct hist_entry *n;
+
+	if (!sort__need_collapse)
+		return;
+
+	root = hists__get_rotate_entries_in(hists);
 	next = rb_first(root);
 
 	while (next) {
@@ -326,13 +334,19 @@ static void __hists__insert_output_entry(struct rb_root *entries,
 
 void hists__output_resort(struct hists *hists)
 {
+	struct rb_root *root;
 	struct rb_node *next;
 	struct hist_entry *n;
 	u64 min_callchain_hits;
 
 	min_callchain_hits = hists->stats.total_period * (callchain_param.min_percent / 100);
 
-	next = rb_first(&hists->entries_collapsed);
+	if (sort__need_collapse)
+		root = &hists->entries_collapsed;
+	else
+		root = hists__get_rotate_entries_in(hists);
+
+	next = rb_first(root);
 	hists->entries = RB_ROOT;
 
 	hists->nr_entries = 0;
