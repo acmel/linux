@@ -244,6 +244,7 @@ static int perf_evlist__start(struct perf_evlist *evlist)
 		}
 
 		attr->mmap = 1;
+		attr->comm = 1;
 		attr->inherit = inherit;
 try_again:
 		if (perf_evsel__open(evsel, evlist->cpus,
