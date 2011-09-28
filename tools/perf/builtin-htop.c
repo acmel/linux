@@ -181,10 +181,11 @@ static int perf_evlist__fprintf_hists(struct perf_evlist *evlist, FILE *fp)
 
 		hists__collapse_resort(&evsel->hists);
 		hists__output_resort(&evsel->hists);
+		hists__decay_entries(&evsel->hists);
 		fprintf(stdout, "%s: ", evname);
-		fprintf(stdout, "sort__need_collapse %d: ", sort__need_collapse);
 		fprintf(stdout, " samples: %d", evsel->hists.stats.nr_events[PERF_RECORD_SAMPLE]);
 		fprintf(stdout, " hists->nr_entries: %" PRIu64 "\n", evsel->hists.nr_entries);
+		fputc('\n', stdout);
 		hists__fprintf(&evsel->hists, NULL, false, false,
 			       winsize.ws_row - 3, winsize.ws_col, fp);
 	}
@@ -206,13 +207,13 @@ static void *display_thread(void *arg __used)
 	tc.c_cc[VTIME] = 0;
 
 	do {
-		delay_msecs = 2 * 1000;
+		delay_msecs = 1 * 1000;
 		tcsetattr(0, TCSANOW, &tc);
 		/* trash return*/
 		getc(stdin);
 
 		do {
-			puts(CONSOLE_CLEAR);
+			fputs(CONSOLE_CLEAR, stdout);
 			perf_evlist__fprintf_hists(top_evlist, stdout);
 		} while (!poll(&stdin_poll, 1, delay_msecs) == 1);
 
