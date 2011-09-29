@@ -30,6 +30,7 @@
 #include "util/thread.h"
 #include "util/sort.h"
 #include "util/hist.h"
+#include "util/top.h"
 
 #include <pthread.h>
 #include <stdio.h>
@@ -37,15 +38,14 @@
 #include <unistd.h>
 #include <inttypes.h>
 
+static struct perf_top top = {
+	.freq			= 1000, /* 1 KHz */
+};
+
 static int			default_interval;
-static int			freq = 1000; /* 1 KHz */
-static bool			hide_kernel_symbols;
-static bool			hide_user_symbols;
 static bool			inherit = false;
 static bool			group = false;
 static unsigned int		mmap_pages = 128;
-static struct perf_evlist	*top_evlist;
-static u64			total_lost_warned;
 static struct winsize		winsize;
 
 /* Tag samples to be skipped. */
@@ -127,11 +127,11 @@ static int perf_event__process_sample(union perf_event *event,
 
 	switch (origin) {
 	case PERF_RECORD_MISC_USER:
-		if (hide_user_symbols)
+		if (top.hide_user_symbols)
 			return 0;
 		break;
 	case PERF_RECORD_MISC_KERNEL:
-		if (hide_kernel_symbols)
+		if (top.hide_kernel_symbols)
 			return 0;
 		break;
 	default:
@@ -238,15 +238,15 @@ static void *display_thread(void *arg)
 
 			fputs(CONSOLE_CLEAR, stdout);
 
-			if (total_lost_warned != session->hists.stats.total_lost) {
-				total_lost_warned = session->hists.stats.total_lost;
+			if (top.total_lost_warned != session->hists.stats.total_lost) {
+				top.total_lost_warned = session->hists.stats.total_lost;
 				color_fprintf(stdout, PERF_COLOR_RED, "WARNING:");
 				printf(" LOST %" PRIu64 " events, Check IO/CPU overload\n",
-				       total_lost_warned);
+				       top.total_lost_warned);
 				++rows_used;
 			}
 
-			perf_evlist__fprintf_hists(top_evlist, rows_used, stdout);
+			perf_evlist__fprintf_hists(top.evlist, rows_used, stdout);
 		} while (!poll(&stdin_poll, 1, delay_msecs) == 1);
 
 		c = getc(stdin);
@@ -265,10 +265,10 @@ static int perf_evlist__start(struct perf_evlist *evlist)
 
 		attr->sample_type = PERF_SAMPLE_IP | PERF_SAMPLE_TID;
 
-		if (freq) {
+		if (top.freq) {
 			attr->sample_type |= PERF_SAMPLE_PERIOD;
 			attr->freq	  = 1;
-			attr->sample_freq = freq;
+			attr->sample_freq = top.freq;
 		}
 
 		if (evlist->nr_entries > 1) {
@@ -344,16 +344,16 @@ static int __cmd_top(void)
 	get_term_dimensions(&winsize);
 	signal(SIGWINCH, sig_winch_handler);
 
-	perf_evlist__start(top_evlist);
-	session->evlist = top_evlist;
+	perf_evlist__start(top.evlist);
+	session->evlist = top.evlist;
 	perf_session__update_sample_type(session);
 
 	perf_event__synthesize_threads(perf_event__process, session);
 
 	/* Wait for a minimal set of events before starting the snapshot */
-	poll(top_evlist->pollfd, top_evlist->nr_fds, 100);
+	poll(top.evlist->pollfd, top.evlist->nr_fds, 100);
 
-	perf_evlist__mmap_process_events(top_evlist, session);
+	perf_evlist__mmap_process_events(top.evlist, session);
 
 	if (pthread_create(&thread, NULL, display_thread, session)) {
 		pr_err("Could not create display thread.\n");
@@ -363,10 +363,10 @@ static int __cmd_top(void)
 	while (1) {
 		u64 hits = session->hists.stats.total_period;
 
-		perf_evlist__mmap_process_events(top_evlist, session);
+		perf_evlist__mmap_process_events(top.evlist, session);
 
 		if (hits == session->hists.stats.total_period &&
-		    poll(top_evlist->pollfd, top_evlist->nr_fds, 100) < 0)
+		    poll(top.evlist->pollfd, top.evlist->nr_fds, 100) < 0)
 			break;
 	}
 
@@ -380,20 +380,20 @@ static const char * const top_usage[] = {
 
 static const struct option options[] = {
 	OPT_INTEGER('c', "count", &default_interval, "event period to sample"),
-	OPT_CALLBACK('e', "event", &top_evlist, "event",
+	OPT_CALLBACK('e', "event", &top.evlist, "event",
 		     "event selector. use 'perf list' to list available events",
 		     parse_events_option),
-	OPT_INTEGER('F', "freq", &freq, "profile at this frequency"),
+	OPT_INTEGER('F', "freq", &top.freq, "profile at this frequency"),
 	OPT_BOOLEAN('g', "group", &group,
 		    "put the counters into a counter group"),
 	OPT_BOOLEAN('i', "inherit", &inherit,
 		    "child tasks inherit counters"),
-	OPT_BOOLEAN('K', "hide_kernel_symbols", &hide_kernel_symbols,
+	OPT_BOOLEAN('K', "hide_kernel_symbols", &top.hide_kernel_symbols,
 		    "hide kernel symbols"),
 	OPT_UINTEGER('m', "mmap-pages", &mmap_pages, "number of mmap data pages"),
 	OPT_STRING('s', "sort", &sort_order, "key[,key2...]",
 		   "sort by key(s): pid, comm, dso, symbol, parent"),
-	OPT_BOOLEAN('U', "hide_user_symbols", &hide_user_symbols,
+	OPT_BOOLEAN('U', "hide_user_symbols", &top.hide_user_symbols,
 		    "hide user symbols"),
 	OPT_INCR('v', "verbose", &verbose,
 		 "be more verbose (show symbol address, etc)"),
@@ -404,8 +404,8 @@ int cmd_htop(int argc, const char **argv, const char *prefix __used)
 {
 	struct perf_evsel *pos;
 
-	top_evlist = perf_evlist__new(NULL, NULL);
-	if (top_evlist == NULL)
+	top.evlist = perf_evlist__new(NULL, NULL);
+	if (top.evlist == NULL)
 		return -ENOMEM;
 
 	argc = parse_options(argc, argv, options, top_usage, 0);
@@ -425,11 +425,11 @@ int cmd_htop(int argc, const char **argv, const char *prefix __used)
 
 	use_browser = 0;
 
-	if (perf_evlist__create_maps(top_evlist, -1, -1, NULL) < 0)
+	if (perf_evlist__create_maps(top.evlist, -1, -1, NULL) < 0)
 		usage_with_options(top_usage, options);
 
-	if (top_evlist->nr_entries == 0 &&
-	    perf_evlist__add_default(top_evlist) < 0) {
+	if (top.evlist->nr_entries == 0 &&
+	    perf_evlist__add_default(top.evlist) < 0) {
 		pr_err("Not enough memory for event selector list\n");
 		return -ENOMEM;
 	}
@@ -438,17 +438,17 @@ int cmd_htop(int argc, const char **argv, const char *prefix __used)
 	 * User specified count overrides default frequency.
 	 */
 	if (default_interval)
-		freq = 0;
-	else if (freq) {
-		default_interval = freq;
+		top.freq = 0;
+	else if (top.freq) {
+		default_interval = top.freq;
 	} else {
 		pr_err("frequency and count are zero, aborting\n");
 		return -EINVAL;
 	}
 
-	list_for_each_entry(pos, &top_evlist->entries, node) {
-		if (perf_evsel__alloc_fd(pos, top_evlist->cpus->nr,
-					 top_evlist->threads->nr) < 0)
+	list_for_each_entry(pos, &top.evlist->entries, node) {
+		if (perf_evsel__alloc_fd(pos, top.evlist->cpus->nr,
+					 top.evlist->threads->nr) < 0)
 			goto out_free_fd;
 		/*
 		 * Fill in the ones not specifically initialized via -c:
@@ -459,8 +459,8 @@ int cmd_htop(int argc, const char **argv, const char *prefix __used)
 		pos->attr.sample_period = default_interval;
 	}
 
-	if (perf_evlist__alloc_pollfd(top_evlist) < 0 ||
-	    perf_evlist__alloc_mmap(top_evlist) < 0)
+	if (perf_evlist__alloc_pollfd(top.evlist) < 0 ||
+	    perf_evlist__alloc_mmap(top.evlist) < 0)
 		goto out_free_fd;
 
 	if (symbol__init() < 0)
@@ -468,6 +468,6 @@ int cmd_htop(int argc, const char **argv, const char *prefix __used)
 
 	return __cmd_top();
 out_free_fd:
-	perf_evlist__delete(top_evlist);
+	perf_evlist__delete(top.evlist);
 	return -ENOMEM;
 }
