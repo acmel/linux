@@ -76,6 +76,7 @@ void hist_entry__free(struct hist_entry *);
 void hists__output_resort(struct hists *self);
 void hists__collapse_resort(struct hists *self);
 void hists__decay_entries(struct hists *hists);
+void hists_output_recalc_col_len(struct hists *hists, int max_rows);
 
 void hists__inc_nr_events(struct hists *self, u32 type);
 size_t hists__fprintf_nr_events(struct hists *self, FILE *fp);

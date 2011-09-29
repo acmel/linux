@@ -198,6 +198,7 @@ static int perf_evlist__fprintf_hists(struct perf_evlist *evlist, FILE *fp)
 		hists__collapse_resort(&evsel->hists);
 		hists__output_resort(&evsel->hists);
 		hists__decay_entries(&evsel->hists);
+		hists_output_recalc_col_len(&evsel->hists, winsize.ws_row - 3);
 		fprintf(stdout, "%s: ", evname);
 		fprintf(stdout, " samples: %d", evsel->hists.stats.nr_events[PERF_RECORD_SAMPLE]);
 		fprintf(stdout, " hists->nr_entries: %" PRIu64 "\n", evsel->hists.nr_entries);

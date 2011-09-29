@@ -393,6 +393,21 @@ void hists__output_resort(struct hists *hists)
 	}
 }
 
+void hists_output_recalc_col_len(struct hists *hists, int max_rows)
+{
+	struct rb_node *next = rb_first(&hists->entries);
+	struct hist_entry *n;
+	int row = 0;
+
+	hists__reset_col_len(hists);
+
+	while (next && row++ < max_rows) {
+		n = rb_entry(next, struct hist_entry, rb_node);
+		hists__calc_col_len(hists, n);
+		next = rb_next(&n->rb_node);
+	}
+}
+
 static size_t callchain__fprintf_left_margin(FILE *fp, int left_margin)
 {
 	int i;
