@@ -396,6 +396,9 @@ int cmd_htop(int argc, const char **argv, const char *prefix __used)
 
 	symbol_conf.exclude_other = false;
 
+	if (sort_order == default_sort_order)
+		sort_order = "dso,symbol";
+
 	setup_sorting(top_usage, options);
 
 	/*
