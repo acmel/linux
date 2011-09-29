@@ -45,6 +45,7 @@ static bool			inherit = false;
 static bool			group = false;
 static unsigned int		mmap_pages = 128;
 static struct perf_evlist	*top_evlist;
+static u64			total_lost_warned;
 static struct winsize		winsize;
 
 /* Tag samples to be skipped. */
@@ -188,7 +189,8 @@ static void perf_evlist__mmap_process_events(struct perf_evlist *evlist,
 		perf_evlist__mmap_process_events_idx(evlist, i, session);
 }
 
-static int perf_evlist__fprintf_hists(struct perf_evlist *evlist, FILE *fp)
+static int perf_evlist__fprintf_hists(struct perf_evlist *evlist,
+				      int rows_used, FILE *fp)
 {
 	struct perf_evsel *evsel;
 
@@ -199,23 +201,25 @@ static int perf_evlist__fprintf_hists(struct perf_evlist *evlist, FILE *fp)
 		hists__output_resort(&evsel->hists);
 		hists__decay_entries(&evsel->hists);
 		hists_output_recalc_col_len(&evsel->hists, winsize.ws_row - 3);
-		fprintf(stdout, "%s: ", evname);
-		fprintf(stdout, " samples: %d", evsel->hists.stats.nr_events[PERF_RECORD_SAMPLE]);
-		fprintf(stdout, " hists->nr_entries: %" PRIu64 "\n", evsel->hists.nr_entries);
-		fputc('\n', stdout);
+		fprintf(fp, "%s: ", evname);
+		fprintf(fp, " samples: %d", evsel->hists.stats.nr_events[PERF_RECORD_SAMPLE]);
+		fprintf(fp, " hists->nr_entries: %" PRIu64 "\n", evsel->hists.nr_entries);
+		fputc('\n', fp);
 		hists__fprintf(&evsel->hists, NULL, false, false,
-			       winsize.ws_row - 3, winsize.ws_col, fp);
+			       winsize.ws_row - 3 - rows_used,
+			       winsize.ws_col, fp);
 	}
 
 	return 0;
 }
 
-static void *display_thread(void *arg __used)
+static void *display_thread(void *arg)
 {
 	static const char CONSOLE_CLEAR[] = "[H[2J";
 	struct pollfd stdin_poll = { .fd = 0, .events = POLLIN };
 	struct termios tc, save;
 	int delay_msecs, c;
+	struct perf_session *session = arg;
 
 	tcgetattr(0, &save);
 	tc = save;
@@ -230,8 +234,19 @@ static void *display_thread(void *arg __used)
 		getc(stdin);
 
 		do {
+			int rows_used = 0;
+
 			fputs(CONSOLE_CLEAR, stdout);
-			perf_evlist__fprintf_hists(top_evlist, stdout);
+
+			if (total_lost_warned != session->hists.stats.total_lost) {
+				total_lost_warned = session->hists.stats.total_lost;
+				color_fprintf(stdout, PERF_COLOR_RED, "WARNING:");
+				printf(" LOST %" PRIu64 " events, Check IO/CPU overload\n",
+				       total_lost_warned);
+				++rows_used;
+			}
+
+			perf_evlist__fprintf_hists(top_evlist, rows_used, stdout);
 		} while (!poll(&stdin_poll, 1, delay_msecs) == 1);
 
 		c = getc(stdin);
@@ -340,7 +355,7 @@ static int __cmd_top(void)
 
 	perf_evlist__mmap_process_events(top_evlist, session);
 
-	if (pthread_create(&thread, NULL, display_thread, NULL)) {
+	if (pthread_create(&thread, NULL, display_thread, session)) {
 		pr_err("Could not create display thread.\n");
 		return -errno;
 	}
