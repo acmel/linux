@@ -245,6 +245,7 @@ static bool hists__collapse_insert_entry(struct hists *hists,
 
 		if (!cmp) {
 			iter->period += he->period;
+			iter->nr_events += he->nr_events;
 			if (symbol_conf.use_callchain) {
 				callchain_cursor_reset(&hists->callchain_cursor);
 				callchain_merge(&hists->callchain_cursor, iter->callchain,
