@@ -170,7 +170,8 @@ static void record_precise_ip(struct hist_entry *he, int counter, u64 ip)
 	struct annotation *notes;
 	struct symbol *sym;
 
-	if (he != top.he_filter_entry)
+	if (he == NULL || he->ms.sym == NULL ||
+	    (he != top.he_filter_entry && use_browser != 1))
 		return;
 
 	sym = he->ms.sym;
@@ -178,6 +179,15 @@ static void record_precise_ip(struct hist_entry *he, int counter, u64 ip)
 
 	if (pthread_mutex_trylock(&notes->lock))
 		return;
+
+	if (notes->src == NULL &&
+	    symbol__alloc_hist(sym, top.evlist->nr_entries) < 0) {
+		pthread_mutex_unlock(&notes->lock);
+		pr_err("Not enough memory for annotating '%s' symbol!\n",
+		       sym->name);
+		sleep(1);
+		return;
+	}
 
 	ip = he->ms.map->map_ip(he->ms.map, ip);
 	symbol__inc_addr_samples(sym, he->ms.map, counter, ip);
