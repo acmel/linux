@@ -118,6 +118,7 @@ static void hists__inc_nr_entries(struct hists *hists, struct hist_entry *h)
 	if (!h->filtered) {
 		hists__calc_col_len(hists, h);
 		++hists->nr_entries;
+		hists->stats.total_period += h->period;
 	}
 }
 
@@ -325,6 +326,7 @@ static void __hists__collapse_resort(struct hists *hists, bool threaded)
 
 	root = hists__get_rotate_entries_in(hists);
 	next = rb_first(root);
+	hists->stats.total_period = 0;
 
 	while (next) {
 		n = rb_entry(next, struct hist_entry, rb_node_in);

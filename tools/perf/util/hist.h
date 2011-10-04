@@ -102,7 +102,8 @@ struct perf_evlist;
 #ifdef NO_NEWT_SUPPORT
 static inline
 int perf_evlist__tui_browse_hists(struct perf_evlist *evlist __used,
-				  const char *help __used)
+				  const char *help __used, void(*timer)(void *arg) __used, void *arg,
+				  int refresh __used)
 {
 	return 0;
 }
@@ -121,7 +122,9 @@ int hist_entry__tui_annotate(struct hist_entry *self, int evidx);
 #define KEY_LEFT NEWT_KEY_LEFT
 #define KEY_RIGHT NEWT_KEY_RIGHT
 
-int perf_evlist__tui_browse_hists(struct perf_evlist *evlist, const char *help);
+int perf_evlist__tui_browse_hists(struct perf_evlist *evlist, const char *help,
+				  void(*timer)(void *arg), void *arg,
+				  int refresh);
 #endif
 
 unsigned int hists__sort_list_width(struct hists *self);

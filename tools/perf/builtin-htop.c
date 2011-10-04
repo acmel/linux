@@ -231,7 +231,6 @@ static struct hist_entry *
 	if (he == NULL)
 		return NULL;
 
-	evsel->hists.stats.total_period += sample->period;
 	session->hists.stats.total_period += sample->period;
 	hists__inc_nr_events(&evsel->hists, PERF_RECORD_SAMPLE);
 	return he;
@@ -516,8 +515,25 @@ static void handle_keypress(int c)
 	}
 }
 
+static void perf_top__sort_new_samples(void *arg)
+{
+	struct perf_top *t = arg;
+	perf_top__reset_sample_counters(t);
+	hists__collapse_resort_threaded(&t->sym_evsel->hists);
+	hists__output_resort_threaded(&t->sym_evsel->hists);
+	hists__decay_entries(&t->sym_evsel->hists);
+	hists_output_recalc_col_len(&t->sym_evsel->hists, winsize.ws_row - 3);
+}
+
 static void *display_thread_tui(void *arg __used)
 {
+	const char *help = "For a higher level overview, try: perf htop --sort comm,dso";
+
+	perf_top__sort_new_samples(&top);
+	perf_evlist__tui_browse_hists(top.evlist, help,
+				      perf_top__sort_new_samples,
+				      &top, top.delay_secs);
+
 	exit_browser(0);
 	exit(0);
 	return NULL;

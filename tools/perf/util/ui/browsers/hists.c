@@ -290,9 +290,11 @@ static void hist_browser__set_folding(struct hist_browser *self, bool unfold)
 	ui_browser__reset_index(&self->b);
 }
 
-static int hist_browser__run(struct hist_browser *self, const char *title)
+static int hist_browser__run(struct hist_browser *self, const char *title,
+			     void(*timer)(void *arg), void *arg, int delay_secs)
 {
 	int key;
+	int delay_msecs = delay_secs * 1000;
 	int exit_keys[] = { 'a', '?', 'h', 'C', 'd', 'D', 'E', 't',
 			    NEWT_KEY_ENTER, NEWT_KEY_RIGHT, NEWT_KEY_LEFT,
 			    NEWT_KEY_TAB, NEWT_KEY_UNTAB, 0, };
@@ -306,12 +308,19 @@ static int hist_browser__run(struct hist_browser *self, const char *title)
 			     "Press '?' for help on key bindings") < 0)
 		return -1;
 
+	if (timer != NULL)
+		newtFormSetTimer(self->b.form, delay_msecs);
+
 	ui_browser__add_exit_keys(&self->b, exit_keys);
 
 	while (1) {
 		key = ui_browser__run(&self->b);
 
 		switch (key) {
+		case -1:
+			/* FIXME we need to check if it was es.reason == NEWT_EXIT_TIMER */
+			timer(arg);
+			continue;
 		case 'D': { /* Debug */
 			static int seq;
 			struct hist_entry *h = rb_entry(self->b.top,
@@ -805,7 +814,9 @@ static int hists__browser_title(struct hists *self, char *bf, size_t size,
 
 static int perf_evsel__hists_browse(struct perf_evsel *evsel,
 				    const char *helpline, const char *ev_name,
-				    bool left_exits)
+				    bool left_exits,
+				    void(*timer)(void *arg), void *arg,
+				    int delay_secs)
 {
 	struct hists *self = &evsel->hists;
 	struct hist_browser *browser = hist_browser__new(self);
@@ -834,7 +845,7 @@ static int perf_evsel__hists_browse(struct perf_evsel *evsel,
 		    annotate = -2, zoom_dso = -2, zoom_thread = -2,
 		    browse_map = -2;
 
-		key = hist_browser__run(browser, msg);
+		key = hist_browser__run(browser, msg, timer, arg, delay_secs);
 
 		if (browser->he_selection != NULL) {
 			thread = hist_browser__selected_thread(browser);
@@ -1026,7 +1037,8 @@ static void perf_evsel_menu__write(struct ui_browser *browser,
 		menu->selection = evsel;
 }
 
-static int perf_evsel_menu__run(struct perf_evsel_menu *menu, const char *help)
+static int perf_evsel_menu__run(struct perf_evsel_menu *menu, const char *help,
+				void(*timer)(void *arg), void *arg, int delay_secs)
 {
 	int exit_keys[] = { NEWT_KEY_ENTER, NEWT_KEY_RIGHT, 0, };
 	struct perf_evlist *evlist = menu->b.priv;
@@ -1051,7 +1063,8 @@ static int perf_evsel_menu__run(struct perf_evsel_menu *menu, const char *help)
 			pos = menu->selection;
 browse_hists:
 			ev_name = event_name(pos);
-			key = perf_evsel__hists_browse(pos, help, ev_name, true);
+			key = perf_evsel__hists_browse(pos, help, ev_name, true,
+						       timer, arg, delay_secs);
 			ui_browser__show_title(&menu->b, title);
 			break;
 		case NEWT_KEY_LEFT:
@@ -1091,7 +1104,9 @@ out:
 }
 
 static int __perf_evlist__tui_browse_hists(struct perf_evlist *evlist,
-					   const char *help)
+					   const char *help,
+					   void(*timer)(void *arg), void *arg,
+					   int delay_secs)
 {
 	struct perf_evsel *pos;
 	struct perf_evsel_menu menu = {
@@ -1121,18 +1136,22 @@ static int __perf_evlist__tui_browse_hists(struct perf_evlist *evlist,
 			pos->name = strdup(ev_name);
 	}
 
-	return perf_evsel_menu__run(&menu, help);
+	return perf_evsel_menu__run(&menu, help, timer, arg, delay_secs);
 }
 
-int perf_evlist__tui_browse_hists(struct perf_evlist *evlist, const char *help)
+int perf_evlist__tui_browse_hists(struct perf_evlist *evlist, const char *help,
+				  void(*timer)(void *arg), void *arg,
+				  int delay_secs)
 {
 
 	if (evlist->nr_entries == 1) {
 		struct perf_evsel *first = list_entry(evlist->entries.next,
 						      struct perf_evsel, node);
 		const char *ev_name = event_name(first);
-		return perf_evsel__hists_browse(first, help, ev_name, false);
+		return perf_evsel__hists_browse(first, help, ev_name, false,
+						timer, arg, delay_secs);
 	}
 
-	return __perf_evlist__tui_browse_hists(evlist, help);
+	return __perf_evlist__tui_browse_hists(evlist, help,
+					       timer, arg, delay_secs);
 }
