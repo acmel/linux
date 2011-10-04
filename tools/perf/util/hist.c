@@ -284,6 +284,7 @@ static struct rb_root *hists__get_rotate_entries_in(struct hists *hists)
 static void hist_entry__decay(struct hist_entry *he)
 {
 	he->period = (he->period * 7) / 8;
+	he->nr_events = (he->nr_events * 7) / 8;
 }
 
 static bool hists__decay_entry(struct hists *hists, struct hist_entry *he)
