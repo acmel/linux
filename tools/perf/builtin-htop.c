@@ -929,6 +929,8 @@ static const struct option options[] = {
 		   "sort by key(s): pid, comm, dso, symbol, parent"),
 	OPT_BOOLEAN('n', "show-nr-samples", &symbol_conf.show_nr_samples,
 		    "Show a column with the number of samples"),
+	OPT_BOOLEAN(0, "show-total-period", &symbol_conf.show_total_period,
+		    "Show a column with the sum of periods"),
 	OPT_STRING(0, "dsos", &symbol_conf.dso_list_str, "dso[,dso...]",
 		   "only consider symbols in these dsos"),
 	OPT_STRING(0, "comms", &symbol_conf.comm_list_str, "comm[,comm...]",
