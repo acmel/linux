@@ -74,7 +74,9 @@ int hist_entry__snprintf(struct hist_entry *self, char *bf, size_t size,
 void hist_entry__free(struct hist_entry *);
 
 void hists__output_resort(struct hists *self);
+void hists__output_resort_threaded(struct hists *hists);
 void hists__collapse_resort(struct hists *self);
+void hists__collapse_resort_threaded(struct hists *hists);
 void hists__decay_entries(struct hists *hists);
 void hists_output_recalc_col_len(struct hists *hists, int max_rows);
 

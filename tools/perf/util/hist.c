@@ -312,13 +312,13 @@ void hists__decay_entries(struct hists *hists)
 	}
 }
 
-void hists__collapse_resort(struct hists *hists)
+static void __hists__collapse_resort(struct hists *hists, bool threaded)
 {
 	struct rb_root *root;
 	struct rb_node *next;
 	struct hist_entry *n;
 
-	if (!sort__need_collapse)
+	if (!sort__need_collapse && !threaded)
 		return;
 
 	root = hists__get_rotate_entries_in(hists);
@@ -332,6 +332,16 @@ void hists__collapse_resort(struct hists *hists)
 		if (hists__collapse_insert_entry(hists, &hists->entries_collapsed, n))
 			hists__inc_nr_entries(hists, n);
 	}
+}
+
+void hists__collapse_resort(struct hists *hists)
+{
+	return __hists__collapse_resort(hists, false);
+}
+
+void hists__collapse_resort_threaded(struct hists *hists)
+{
+	return __hists__collapse_resort(hists, true);
 }
 
 /*
@@ -364,7 +374,7 @@ static void __hists__insert_output_entry(struct rb_root *entries,
 	rb_insert_color(&he->rb_node, entries);
 }
 
-void hists__output_resort(struct hists *hists)
+static void __hists__output_resort(struct hists *hists, bool threaded)
 {
 	struct rb_root *root;
 	struct rb_node *next;
@@ -373,10 +383,10 @@ void hists__output_resort(struct hists *hists)
 
 	min_callchain_hits = hists->stats.total_period * (callchain_param.min_percent / 100);
 
-	if (sort__need_collapse)
+	if (sort__need_collapse || threaded)
 		root = &hists->entries_collapsed;
 	else
-		root = hists__get_rotate_entries_in(hists);
+		root = hists->entries_in;
 
 	next = rb_first(root);
 	hists->entries = RB_ROOT;
@@ -391,6 +401,16 @@ void hists__output_resort(struct hists *hists)
 		__hists__insert_output_entry(&hists->entries, n, min_callchain_hits);
 		hists__inc_nr_entries(hists, n);
 	}
+}
+
+void hists__output_resort(struct hists *hists)
+{
+	return __hists__output_resort(hists, false);
+}
+
+void hists__output_resort_threaded(struct hists *hists)
+{
+	return __hists__output_resort(hists, true);
 }
 
 void hists_output_recalc_col_len(struct hists *hists, int max_rows)
