@@ -960,7 +960,8 @@ do_annotate:
 			if (he == NULL)
 				continue;
 
-			hist_entry__tui_annotate(he, evsel->idx);
+			hist_entry__tui_annotate(he, evsel->idx,
+						 timer, arg, delay_secs);
 		} else if (choice == browse_map)
 			map__browse(browser->selection->map);
 		else if (choice == zoom_dso) {
