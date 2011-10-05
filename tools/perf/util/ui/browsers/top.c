@@ -142,7 +142,8 @@ static void perf_top_browser__annotate(struct perf_top_browser *browser)
 
 	pthread_mutex_unlock(&notes->lock);
 do_annotation:
-	symbol__tui_annotate(sym, syme->map, 0, NULL, NULL, top->delay_secs);
+	symbol__tui_annotate(sym, syme->map, 0, top->evlist->nr_entries,
+			     NULL, NULL, top->delay_secs);
 }
 
 static void perf_top_browser__warn_lost(struct perf_top_browser *browser)
