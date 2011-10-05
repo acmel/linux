@@ -76,8 +76,11 @@ static bool			system_wide			=  false;
 
 static bool			use_tui, use_stdio;
 
+static bool			sort_has_symbols;
+
 static bool			dont_use_callchains;
 static char			callchain_default_opt[]		= "fractal,0.5,callee";
+
 
 static int			default_interval		=      0;
 
@@ -756,7 +759,8 @@ static void perf_event__process_sample(const union perf_event *event,
 				return;
 		}
 
-		record_precise_ip(he, evsel->idx, ip);
+		if (sort_has_symbols)
+			record_precise_ip(he, evsel->idx, ip);
 	}
 
 	return;
@@ -871,7 +875,12 @@ out_err:
 
 static int setup_sample_type(void)
 {
-	if (!dont_use_callchains && callchain_param.mode != CHAIN_NONE) {
+	if (!sort_has_symbols) {
+		if (symbol_conf.use_callchain) {
+			ui__warning("Selected -g but \"sym\" not present in --sort/-s.");
+			return -EINVAL;
+		}
+	} else if (!dont_use_callchains && callchain_param.mode != CHAIN_NONE) {
 		if (callchain_register_param(&callchain_param) < 0) {
 			ui__warning("Can't register callchain params.\n");
 			return -EINVAL;
@@ -1185,6 +1194,12 @@ int cmd_htop(int argc, const char **argv, const char *prefix __used)
 	sort_entry__setup_elide(&sort_dso, symbol_conf.dso_list, "dso", stdout);
 	sort_entry__setup_elide(&sort_comm, symbol_conf.comm_list, "comm", stdout);
 	sort_entry__setup_elide(&sort_sym, symbol_conf.sym_list, "symbol", stdout);
+
+	/*
+	 * Avoid annotation data structures overhead when symbols aren't on the
+	 * sort list.
+	 */
+	sort_has_symbols = sort_sym.list.next != NULL;
 
 	get_term_dimensions(&winsize);
 	if (top.print_entries == 0) {
