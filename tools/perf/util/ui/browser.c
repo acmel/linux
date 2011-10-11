@@ -1,4 +1,6 @@
+#include "../util.h"
 #include "libslang.h"
+#include <newt.h>
 #include "ui.h"
 #include <linux/compiler.h>
 #include <linux/list.h>
@@ -8,8 +10,8 @@
 #include "browser.h"
 #include "helpline.h"
 #include "../color.h"
-#include "../util.h"
-#include <stdio.h>
+
+int newtGetKey(void);
 
 static int ui_browser__percent_color(double percent, bool current)
 {
@@ -127,11 +129,8 @@ bool ui_browser__is_current_entry(struct ui_browser *self, unsigned row)
 
 void ui_browser__refresh_dimensions(struct ui_browser *self)
 {
-	int cols, rows;
-	newtGetScreenSize(&cols, &rows);
-
-	self->width = cols - 1;
-	self->height = rows - 2;
+	self->width = SLtt_Screen_Cols - 1;
+	self->height = SLtt_Screen_Rows - 2;
 	self->y = 1;
 	self->x = 0;
 }
@@ -142,9 +141,8 @@ void ui_browser__reset_index(struct ui_browser *self)
 	self->seek(self, 0, SEEK_SET);
 }
 
-void ui_browser__add_exit_key(struct ui_browser *self, int key)
+void ui_browser__add_exit_key(struct ui_browser *browser __used, int key __used)
 {
-	newtFormAddHotKey(self->form, key);
 }
 
 void ui_browser__add_exit_keys(struct ui_browser *self, int keys[])
@@ -174,77 +172,113 @@ void ui_browser__show_title(struct ui_browser *browser, const char *title)
 int ui_browser__show(struct ui_browser *self, const char *title,
 		     const char *helpline, ...)
 {
+	int err;
 	va_list ap;
 	int keys[] = { NEWT_KEY_UP, NEWT_KEY_DOWN, NEWT_KEY_PGUP,
 		       NEWT_KEY_PGDN, NEWT_KEY_HOME, NEWT_KEY_END, ' ',
 		       NEWT_KEY_LEFT, NEWT_KEY_ESCAPE, 'q', CTRL('c'), 0 };
 
-	if (self->form != NULL)
-		newtFormDestroy(self->form);
-
 	ui_browser__refresh_dimensions(self);
-	self->form = newtForm(NULL, NULL, 0);
-	if (self->form == NULL)
-		return -1;
-
-	self->sb = newtVerticalScrollbar(self->width, 1, self->height,
-					 HE_COLORSET_NORMAL,
-					 HE_COLORSET_SELECTED);
-	if (self->sb == NULL)
-		return -1;
 
 	pthread_mutex_lock(&ui__lock);
 	__ui_browser__show_title(self, title);
 
 	ui_browser__add_exit_keys(self, keys);
-	newtFormAddComponent(self->form, self->sb);
+	self->title = title;
+	free(self->helpline);
+	self->helpline = NULL;
 
 	va_start(ap, helpline);
-	ui_helpline__vpush(helpline, ap);
+	err = vasprintf(&self->helpline, helpline, ap);
 	va_end(ap);
+	if (err > 0)
+		ui_helpline__push(self->helpline);
 	pthread_mutex_unlock(&ui__lock);
-	return 0;
+	return err ? 0 : -1;
 }
 
-void ui_browser__hide(struct ui_browser *self)
+void ui_browser__hide(struct ui_browser *browser __used)
 {
 	pthread_mutex_lock(&ui__lock);
-	newtFormDestroy(self->form);
-	self->form = NULL;
 	ui_helpline__pop();
 	pthread_mutex_unlock(&ui__lock);
 }
 
-int ui_browser__refresh(struct ui_browser *self)
+static int __ui_browser__refresh(struct ui_browser *browser)
 {
 	int row;
 
+	// newtScrollbarSet(browser->sb, browser->index, browser->nr_entries - 1);
+	row = browser->refresh(browser);
+	ui_browser__set_color(browser, HE_COLORSET_NORMAL);
+	SLsmg_fill_region(browser->y + row, browser->x,
+			  browser->height - row, browser->width, ' ');
+
+	return 0;
+}
+
+int ui_browser__refresh(struct ui_browser *browser)
+{
 	pthread_mutex_lock(&ui__lock);
-	newtScrollbarSet(self->sb, self->index, self->nr_entries - 1);
-	row = self->refresh(self);
-	ui_browser__set_color(self, HE_COLORSET_NORMAL);
-	SLsmg_fill_region(self->y + row, self->x,
-			  self->height - row, self->width, ' ');
+	__ui_browser__refresh(browser);
 	pthread_mutex_unlock(&ui__lock);
 
 	return 0;
 }
 
-int ui_browser__run(struct ui_browser *self)
-{
-	struct newtExitStruct es;
+static pthread_t ui_browser__thread;
 
-	if (ui_browser__refresh(self) < 0)
+static void ui_browser__sigwinch(int sig __used)
+{
+	if (pthread_self() != ui_browser__thread)
+		pthread_kill(ui_browser__thread, SIGWINCH);
+}
+
+int ui_browser__run(struct ui_browser *self, int delay_secs)
+{
+	int err, key;
+	struct timeval timeout, *ptimeout = delay_secs ? &timeout : NULL;
+
+	ui_browser__thread = pthread_self();
+	if (signal(SIGWINCH, ui_browser__sigwinch) == SIG_ERR)
 		return -1;
 
 	while (1) {
 		off_t offset;
+		fd_set read_set;
 
-		newtFormRun(self->form, &es);
-
-		if (es.reason != NEWT_EXIT_HOTKEY)
+		pthread_mutex_lock(&ui__lock);
+		err = __ui_browser__refresh(self);
+		SLsmg_refresh();
+		pthread_mutex_unlock(&ui__lock);
+		if (err < 0)
 			break;
-		switch (es.u.key) {
+
+		FD_ZERO(&read_set);
+		FD_SET(0, &read_set);
+
+		if (delay_secs) {
+			timeout.tv_sec = delay_secs;
+			timeout.tv_usec = 0;
+		}
+
+	        err = select(1, &read_set, NULL, NULL, ptimeout);
+		if (err > 0 && FD_ISSET(0, &read_set))
+			key = newtGetKey();
+		else if (err == 0)
+			break;
+		else {
+			pthread_mutex_lock(&ui__lock);
+			SLtt_get_screen_size();
+			SLsmg_reinit_smg();
+			pthread_mutex_unlock(&ui__lock);
+			ui_browser__refresh_dimensions(self);
+			__ui_browser__show_title(self, self->title);
+			ui_helpline__puts(self->helpline);
+			continue;
+		}
+
+		switch (key) {
 		case NEWT_KEY_DOWN:
 			if (self->index == self->nr_entries - 1)
 				break;
@@ -301,10 +335,8 @@ int ui_browser__run(struct ui_browser *self)
 			self->seek(self, -offset, SEEK_END);
 			break;
 		default:
-			return es.u.key;
+			return key;
 		}
-		if (ui_browser__refresh(self) < 0)
-			return -1;
 	}
 	return -1;
 }
@@ -330,13 +362,13 @@ unsigned int ui_browser__list_head_refresh(struct ui_browser *self)
 	return row;
 }
 
-static struct newtPercentTreeColors {
+static struct ui_browser__colors {
 	const char *topColorFg, *topColorBg;
 	const char *mediumColorFg, *mediumColorBg;
 	const char *normalColorFg, *normalColorBg;
 	const char *selColorFg, *selColorBg;
 	const char *codeColorFg, *codeColorBg;
-} defaultPercentTreeColors = {
+} ui_browser__default_colors = {
 	"red",       "lightgray",
 	"green",     "lightgray",
 	"black",     "lightgray",
@@ -346,7 +378,7 @@ static struct newtPercentTreeColors {
 
 void ui_browser__init(void)
 {
-	struct newtPercentTreeColors *c = &defaultPercentTreeColors;
+	struct ui_browser__colors *c = &ui_browser__default_colors;
 
 	sltt_set_color(HE_COLORSET_TOP, NULL, c->topColorFg, c->topColorBg);
 	sltt_set_color(HE_COLORSET_MEDIUM, NULL, c->mediumColorFg, c->mediumColorBg);
